@@ -4,7 +4,9 @@ import {useMapStore} from "@/stores/map.js";
 import {onMounted, ref, toRaw} from "vue";
 
 const mapStore = useMapStore();
-const map = toRaw(mapStore.map)
+//const map = toRaw(mapStore.map)
+
+const map=mapStore.getMap();
 
 let measureTool;
 

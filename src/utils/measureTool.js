@@ -4,6 +4,9 @@ import { Draw } from "ol/interaction";
 import VectorSource from "ol/source/Vector";
 import VectorLayer from "ol/layer/Vector";
 import { Fill, Stroke, Style } from "ol/style";
+import {useMapStore} from "@/stores/map.js";
+import {nextTick} from "vue";
+
 
 export const createMeasureTool = (map) => {
     let measureTooltipElement;
@@ -42,35 +45,74 @@ export const createMeasureTool = (map) => {
     // ================== 格式化函数 ==================
     const formatLength = (line) => {
         const length = getLength(line);
-        return length > 1000
-            ? (Math.round((length / 1000) * 100) / 100) + " km"
-            : (Math.round(length * 100) / 100) + " m";
+        return {
+            value:
+                length > 1000
+                    ? Math.round((length / 1000) * 100) / 100
+                    : Math.round(length * 100) / 100,
+            unit: length > 1000 ? "km" : "m",
+        };
     };
 
     const formatArea = (polygon) => {
         const area = getArea(polygon);
-        return area > 1000000
-            ? (Math.round((area / 1000000) * 100) / 100) + " km²"
-            : area > 10000
-                ? (Math.round((area / 10000) * 100) / 100) + " ha"
-                : (Math.round(area * 100) / 100) + " m²";
+        if (area > 1000000) {
+            return {
+                value: Math.round((area / 1000000) * 100) / 100,
+                unit: "km²",
+            };
+        } else if (area > 10000) {
+            return {
+                value: Math.round((area / 10000) * 100) / 100,
+                unit: "ha",
+            };
+        } else {
+            return { value: Math.round(area * 100) / 100, unit: "m²" };
+        }
     };
+
+    // ================== 样式创建函数 ==================
+    const createDrawStyle = (type) => {
+        const baseStyle = new Style({
+            stroke: new Stroke({
+                color: "rgba(0,0,0,0.5)",
+                lineDash: [10, 10],
+                width: 2,
+            }),
+        });
+
+        if (type === "Polygon") {
+            baseStyle.setFill(new Fill({ color: "rgba(255,255,255,0.2)" }));
+        }
+
+        return baseStyle;
+    };
+
+    // 停止测量
+    const stopMeasure=()=> {
+        if (draw) {
+            map.removeInteraction(draw);
+            draw = null;
+        }
+        if (measureTooltip) {
+            map.removeOverlay(measureTooltip);
+            measureTooltip = null;
+        }
+        if (measureTooltipElement && measureTooltipElement.parentNode) {
+            measureTooltipElement.parentNode.removeChild(measureTooltipElement);
+            measureTooltipElement = null;
+        }
+    }
 
     // ================== 返回工具方法 ==================
     return {
         // 开始测距离
         startMeasureDistance() {
-            this.stopMeasure();
+            stopMeasure();
             draw = new Draw({
                 source: source,
                 type: "LineString",
-                style: new Style({
-                    stroke: new Stroke({
-                        color: "rgba(0,0,0,0.5)",
-                        lineDash: [10, 10],
-                        width: 2,
-                    }),
-                }),
+                style: createDrawStyle("LineString"),
             });
             createMeasureTooltip();
 
@@ -78,7 +120,8 @@ export const createMeasureTool = (map) => {
                 sketch = evt.feature;
                 sketch.getGeometry().on("change", (evt) => {
                     const geom = evt.target;
-                    measureTooltipElement.innerHTML = formatLength(geom);
+                    const length = formatLength(geom);
+                    measureTooltipElement.innerHTML = `${length.value} ${length.unit}`;
                     measureTooltip.setPosition(geom.getLastCoordinate());
                 });
             });
@@ -95,18 +138,11 @@ export const createMeasureTool = (map) => {
 
         // 开始测面积
         startMeasureArea() {
-            this.stopMeasure();
+            stopMeasure();
             draw = new Draw({
                 source: source,
                 type: "Polygon",
-                style: new Style({
-                    fill: new Fill({ color: "rgba(255,255,255,0.2)" }),
-                    stroke: new Stroke({
-                        color: "rgba(0,0,0,0.5)",
-                        lineDash: [10, 10],
-                        width: 2,
-                    }),
-                }),
+                style: createDrawStyle("Polygon"),
             });
             createMeasureTooltip();
 
@@ -114,7 +150,8 @@ export const createMeasureTool = (map) => {
                 sketch = evt.feature;
                 sketch.getGeometry().on("change", (evt) => {
                     const geom = evt.target;
-                    measureTooltipElement.innerHTML = formatArea(geom);
+                    const area = formatArea(geom);
+                    measureTooltipElement.innerHTML = `${area.value} ${area.unit}`;
                     measureTooltip.setPosition(geom.getInteriorPoint().getCoordinates());
                 });
             });
@@ -128,21 +165,6 @@ export const createMeasureTool = (map) => {
 
             map.addInteraction(draw);
         },
-
-        // 停止测量
-        stopMeasure() {
-            if (draw) {
-                map.removeInteraction(draw);
-                draw = null;
-            }
-            if (measureTooltip) {
-                map.removeOverlay(measureTooltip);
-                measureTooltip = null;
-            }
-            if (measureTooltipElement && measureTooltipElement.parentNode) {
-                measureTooltipElement.parentNode.removeChild(measureTooltipElement);
-                measureTooltipElement = null;
-            }
-        },
+        stopMeasure:stopMeasure,
     };
 };

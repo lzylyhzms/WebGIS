@@ -7,6 +7,7 @@ import {useMapStore} from "@/stores/map.js";
 const mapStore = useMapStore();
 const map = mapStore.getMap();
 
+
 // 用来保存点击拾取的坐标
 const clickedCoord = ref("");
 

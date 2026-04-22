@@ -35,21 +35,8 @@ const osmLayer = new TileLayer({
 osmLayer.set('id','osm');
 
 
-const tk = "5f49f9b6c9a9484eabe2d4375e6569b0";
-new LayerGroup({ //layers集合
-  layers: [
-    new TileLayer({
-      source: new XYZ({
-        url: `http://t2.tianditu.com/DataServer?T=img_w&x={x}&y={y}&l={z}&tk=${tk}`
-      })
-    }),
-    new TileLayer({
-      source: new XYZ({
-        url: `http://t2.tianditu.com/DataServer?T=cia_w&x={x}&y={y}&l={z}&tk=${tk}`
-      })
-    })
-  ]
-});
+const tk=import.meta.env.VITE_TIAN;
+
 const gaode = new XYZ({
   url: "https://webrd0{1-4}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}",
   // 版权信息
@@ -57,7 +44,7 @@ const gaode = new XYZ({
 });
 
 const tdtVec = new XYZ({
-  url: `http://t{0-7}.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=${tk}`
+  url: `/tianditu/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=${tk}`
 });
 
 const tdtImg = new XYZ({

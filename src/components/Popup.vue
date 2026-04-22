@@ -9,19 +9,17 @@ import {click} from "ol/events/condition";
 import {createHistoryManager} from "@/utils/pickFeature.js";
 import {useMapStore} from "@/stores/map.js";
 import {useLayerStore} from "@/stores/layerset.js";
+import VectorLayer from "ol/layer/Vector";
+import {originExportFeature, originExportGeoJSON} from "@/utils/solveGeo.js";
 
 const mapStore = useMapStore();
 const layerStore = useLayerStore();
 
-const map = toRaw(mapStore.map)
+//const map = toRaw(mapStore.map)
+
+const map=mapStore.getMap();
 const layerSet = layerStore.getLayers();
 
-// const props = defineProps({
-//   currentEditor: {
-//     type: Object,
-//     required: true
-//   }
-// });
 
 const currentEditor={
   id:1,
@@ -33,59 +31,57 @@ const currentEditor={
 const isDrawing = ref(false);
 const drawType = ref("Point"); // 默认绘制点
 
-// 找到 vector 图层
+// 获取 vector 图层
 const vectorLayer = layerSet.find(l => l.get("id") === "vector");
+if (!vectorLayer) {
+  console.error("Vector layer not found.");
+}
+
+
+// 样式提取
+const pointStyle = new Style({
+  image: new CircleStyle({
+    radius: 10,
+    fill: new Fill({ color: "red" }),
+    stroke: new Stroke({ color: "yellow", width: 3 })
+  }),
+  text: new Text({
+    text: "绘制中...",
+    offsetY: 20,
+    font: "bold 14px Arial, sans-serif",
+    fill: new Fill({ color: "#000" }),
+    stroke: new Stroke({ color: "#fff", width: 2 })
+  })
+});
+
+const lineStyle = new Style({
+  stroke: new Stroke({
+    color: "#87ff36",
+    width: 2,
+    lineDash: [4, 4],
+    lineCap: "round",
+    lineJoin: "round"
+  })
+});
+
+const polygonStyle = new Style({
+  fill: new Fill({ color: "rgba(255, 87, 51, 0.4)" }),
+  stroke: new Stroke({ color: "#ff5733", width: 2 })
+});
 
 // 工厂函数，根据类型返回 Draw
 function createDraw(type) {
-  if (type === "Point") {
-    return new Draw({
-      source: vectorLayer.getSource(),
-      type: "Point",
-      style: new Style({
-        image: new CircleStyle({
-          radius: 10,
-          fill: new Fill({ color: "red" }),
-          stroke: new Stroke({ color: "yellow", width: 3 })
-        }),
-        text: new Text({
-          text: "绘制中...",
-          offsetY: 20,
-          font: "bold 14px Arial, sans-serif",
-          fill: new Fill({ color: "#000" }),
-          stroke: new Stroke({ color: "#fff", width: 2 })
-        })
-      })
-    });
-  } else if (type === "LineString") {
-    return new Draw({
-      source: vectorLayer.getSource(),
-      type: "LineString",
-      style: new Style({
-        stroke: new Stroke({
-          color: "#87ff36",
-          width: 2,
-          lineDash: [4, 4],
-          lineCap: "round",
-          lineJoin: "round"
-        })
-      })
-    });
-  } else if (type === "Polygon") {
-    return new Draw({
-      source: vectorLayer.getSource(),
-      type: "Polygon",
-      style: new Style({
-        fill: new Fill({
-          color: "rgba(255, 87, 51, 0.4)"
-        }),
-        stroke: new Stroke({
-          color: "#ff5733",
-          width: 2
-        })
-      })
-    });
-  }
+  const styles = {
+    "Point": pointStyle,
+    "LineString": lineStyle,
+    "Polygon": polygonStyle
+  };
+
+  return new Draw({
+    source: vectorLayer.getSource(),
+    type: type,
+    style: styles[type] || lineStyle // 默认使用 lineStyle
+  });
 }
 
 
@@ -110,11 +106,11 @@ function toggleDraw() {
       console.log("绘制完成:", feature.getProperties());
     });
 
-    map.addInteraction(activeDraw);
-
+    // 确保 vectorLayer 只被添加一次
     if (!map.getAllLayers().find(l => l.get("id") === "vector")) {
       map.addLayer(vectorLayer);
     }
+    map.addInteraction(activeDraw);
     isDrawing.value = true;
   } else {
     if (activeDraw) {
@@ -129,7 +125,7 @@ function toggleDraw() {
 let historyManager;
 
 onMounted(()=>{
-  historyManager = createHistoryManager(map, layerSet.find(l=>l.get('id')==='vector'), 50);
+  historyManager = createHistoryManager(map, vectorLayer, 50);
   historyManager.init();
   historyManager.start();
 });
@@ -143,8 +139,8 @@ const selectInfo = ref("选择要素");
 function toggleSelect(){
   isSelecting.value = !isSelecting.value;
   if(isSelecting.value){
-    //map.addInteraction(select);
-    map.removeInteraction(select);
+    map.addInteraction(select);
+    //map.removeInteraction(select);
   }else{
     map.removeInteraction(select);
   }
@@ -184,7 +180,6 @@ const select = new Select({
   condition: click,
   layers: [vectorLayer]
 });
-//map.addInteraction(select);
 
 // 弹窗状态 & 绑定要素
 const showEditor = ref(false);
@@ -222,7 +217,6 @@ function saveProps() {
     selectedFeature.value.set("lastModifiedAt", new Date().toISOString());
   }
   showEditor.value = false;
-  //map.removeInteraction(select);
 }
 
 const isModify = ref(false);
@@ -240,9 +234,54 @@ function toggleModify(){
   }
 }
 
-function exportFeatures(){
+const showExport = ref(false)
+const allFeatures = ref([])       // 所有地图上的矢量要素
+const selectedIndex = ref([])     // 勾选的要素索引
 
+function showExportDiv() {
+  // 收集所有矢量图层的要素
+  allFeatures.value = []
+  layerSet.forEach(layer => {
+    if (layer instanceof VectorLayer) {
+      const features = layer.getSource().getFeatures()
+      allFeatures.value.push(...features)
+    }
+  })
+
+  if (allFeatures.value.length === 0) {
+    alert('当前没有要素')
+    return
+  }
+
+  selectedIndex.value = allFeatures.value.map((_, i) => i) // 默认全选
+  updatePreview()
+  showExport.value = true
 }
+
+// 根据勾选的要素生成预览 GeoJSON
+function updatePreview() {
+  const featuresToExport = selectedIndex.value.map(i => allFeatures.value[i])
+  if (featuresToExport.length === 0) {
+    alert("请先选择要素");
+    return;
+  }
+}
+
+// 点击确认导出
+function confirmExport() {
+  const featuresToExport = selectedIndex.value.map(i => allFeatures.value[i])
+  if (featuresToExport.length === 0) {
+    alert('请先选择要导出的要素')
+    return
+  }
+  originExportFeature(featuresToExport) // 调用你现有导出方法
+  showExport.value = false
+}
+
+function cancelExport() {
+  showExport.value = false
+}
+
 </script>
 
 <template>
@@ -263,7 +302,7 @@ function exportFeatures(){
 
   <div class="draw" id="extra-modify">
     <button @click="toggleModify">{{modifyInfo}}</button>
-    <button @click="exportFeatures">导出要素</button>
+    <button @click="showExportDiv">导出要素</button>
   </div>
 
 
@@ -286,6 +325,21 @@ function exportFeatures(){
       <button @click="showEditor=false">取消</button>
     </div>
   </div>
+
+  <div v-if="showExport" class="modal-overlay">
+    <div class="export-panel">
+      <h3>选择要导出的要素</h3>
+      <ul>
+        <li v-for="(feature, index) in allFeatures" :key="index">
+          <input type="checkbox" v-model="selectedIndex" :value="index" />
+          {{ feature.get('name') || feature.getId() || '未命名要素' }}
+        </li>
+      </ul>
+
+      <button @click="confirmExport">确认导出</button>
+      <button @click="cancelExport">取消</button>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -304,6 +358,31 @@ function exportFeatures(){
 
 .draw select{
   width: 80px;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.4); /* 半透明黑色遮罩 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.export-panel {
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  width: 500px;
+  max-height: 80%;
+  overflow: auto;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  z-index: 1000;
 }
 
 #extra{

@@ -8,12 +8,13 @@ import Popup from "@/components/Popup.vue";
 </script>
 
 <template>
-  <MapContainer></MapContainer>
-  <Layers></Layers>
-  <Controls></Controls>
-  <MeasureTools></MeasureTools>
-  <SearchBar></SearchBar>
-  <Popup></Popup>
+  <MapContainer>
+    <Layers></Layers>
+    <Controls></Controls>
+    <MeasureTools></MeasureTools>
+    <SearchBar></SearchBar>
+    <Popup></Popup>
+  </MapContainer>
 </template>
 
 <style scoped>

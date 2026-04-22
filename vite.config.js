@@ -11,6 +11,13 @@ export default defineConfig({
     vueDevTools(),
   ],
   server:{
+    proxy: {
+      '/tianditu': {
+        target: 'http://t0.tianditu.gov.cn',
+        changeOrigin: true,
+        rewrite: path => path.replace(/^\/tianditu/, '')
+      }
+    }
     //host:'0.0.0.0',
   },
   resolve: {
